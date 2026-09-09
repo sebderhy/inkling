@@ -6,7 +6,9 @@
 <title>Inkling</title>
 <meta name="description" content="A todo list that likes you back. Paper, ink, and a sky that follows the hour.">
 <meta name="theme-color" content="#f4efe6">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f4efe6' stroke='%231b1a17' stroke-width='2'/%3E%3Cpath d='M9 16.5l5 5 9-11' fill='none' stroke='%23c8471f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
@@ -33,18 +35,60 @@
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
     </span>
     <label class="visually-hidden" for="input">Add a task</label>
-    <input id="input" class="composer-input" type="text" maxlength="200" spellcheck="true" placeholder="What needs doing?" enterkeyhint="done">
+    <input id="input" class="composer-input" type="text" maxlength="240" spellcheck="true" placeholder="What needs doing?" enterkeyhint="done">
     <kbd class="composer-kbd" aria-hidden="true">↵</kbd>
     <div class="composer-hints" id="hints" aria-live="polite"></div>
   </form>
 
-  <section class="list-section" aria-label="Tasks">
-    <ul class="list" id="active" role="list"></ul>
-    <div class="empty" id="empty" hidden>
+  <div class="filter-bar" id="filterBar" hidden>
+    <span id="filterText"></span>
+    <button class="text-btn" id="filterClear" type="button">Show everything</button>
+  </div>
+
+  <section class="section section-today" id="todaySection" aria-label="Today">
+    <div class="section-head">
+      <h2 class="section-title">Today</h2>
+      <div class="capacity" id="capacity" title="Estimated time on today's list versus what is left of the day">
+        <span class="cap-text" id="capText"></span>
+        <span class="cap-bar" aria-hidden="true"><i id="capFill"></i></span>
+      </div>
+      <button class="text-btn start-btn" id="startBtn" type="button" title="Pick one thing and focus on it (n)">Start here</button>
+    </div>
+    <ul class="list" id="today" role="list" data-when="today"></ul>
+    <div class="evening-head" id="eveningHead" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+      <span>This evening</span>
+    </div>
+    <ul class="list" id="evening" role="list" data-when="evening"></ul>
+    <div class="empty empty-today" id="emptyToday" hidden>
       <span class="empty-dot" aria-hidden="true"></span>
-      <p class="empty-text" id="emptyText"></p>
+      <p class="empty-text" id="emptyTodayText"></p>
     </div>
   </section>
+
+  <section class="section" id="nextSection" aria-label="Up next" hidden>
+    <div class="section-head">
+      <h2 class="section-title">Up next</h2>
+      <span class="section-count" id="nextCount"></span>
+    </div>
+    <ul class="list" id="next" role="list" data-when="next"></ul>
+  </section>
+
+  <section class="section" id="somedaySection" aria-label="Someday" hidden>
+    <div class="section-head">
+      <button class="section-toggle" id="somedayToggle" type="button" aria-expanded="false">
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        <h2 class="section-title">Someday</h2>
+        <span class="section-count" id="somedayCount"></span>
+      </button>
+    </div>
+    <ul class="list list-someday" id="someday" role="list" data-when="someday"></ul>
+  </section>
+
+  <div class="empty" id="empty" hidden>
+    <span class="empty-dot" aria-hidden="true"></span>
+    <p class="empty-text" id="emptyText"></p>
+  </div>
 
   <section class="done-section" id="doneSection" hidden aria-label="Completed tasks">
     <div class="done-bar">
@@ -59,8 +103,9 @@
   </section>
 
   <footer class="foot">
-    <div class="week" id="week" title="Tasks finished, last seven days" aria-label="Tasks finished in the last seven days"></div>
+    <button class="week" id="week" type="button" title="The ledger: what you finished each day (j)" aria-label="Open the ledger"></button>
     <div class="foot-actions">
+      <button class="text-btn close-day-btn" id="closeDayBtn" type="button" hidden>Close the day</button>
       <button class="icon-btn" id="soundBtn" type="button" aria-label="Toggle sound" aria-pressed="true">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L13 19V5L7.5 9.5H4z"/><path class="wave wave-1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="wave wave-2" d="M18.5 7a7 7 0 0 1 0 10"/></svg>
       </button>
@@ -76,29 +121,73 @@
   </footer>
 </main>
 
+<!-- Focus: one task, an hourglass of ink -->
+<section class="focus" id="focus" hidden aria-label="Focus">
+  <div class="focus-inner">
+    <p class="focus-eyebrow">Just this</p>
+    <h2 class="focus-text" id="focusText"></h2>
+    <p class="focus-note" id="focusNote" hidden></p>
+    <svg class="hourglass" viewBox="0 0 120 200" aria-hidden="true">
+      <defs>
+        <clipPath id="hg-top"><path d="M22 12H98V30C98 58 70 78 63 96H57C50 78 22 58 22 30Z"/></clipPath>
+        <clipPath id="hg-bottom"><path d="M63 104C70 122 98 142 98 170V188H22V170C22 142 50 122 57 104Z"/></clipPath>
+      </defs>
+      <path class="hg-glass" d="M18 8H102M18 192H102M22 12V30C22 58 50 78 57 96V104C50 122 22 142 22 170V188M98 12V30C98 58 70 78 63 96V104C70 122 98 142 98 170V188"/>
+      <rect class="hg-ink" id="hgTop" x="20" y="12" width="80" height="86" clip-path="url(#hg-top)"/>
+      <line class="hg-stream" id="hgStream" x1="60" y1="100" x2="60" y2="188"/>
+      <rect class="hg-ink" id="hgBottom" x="20" y="188" width="80" height="0" clip-path="url(#hg-bottom)"/>
+    </svg>
+    <p class="focus-time" id="focusTime">25:00</p>
+    <p class="focus-hint" id="focusHint"></p>
+    <div class="focus-actions">
+      <button class="pill pill-ink" id="focusDone" type="button">Done</button>
+      <button class="text-btn" id="focusMore" type="button">Five more minutes</button>
+      <button class="text-btn" id="focusNext" type="button">Something else</button>
+      <button class="text-btn" id="focusStop" type="button">Stop</button>
+    </div>
+  </div>
+</section>
+
 <div class="toast" id="toast" role="status" hidden>
   <span class="toast-text" id="toastText"></span>
   <button class="toast-btn" id="toastUndo" type="button">Undo</button>
   <span class="toast-bar" aria-hidden="true"></span>
 </div>
 
-<dialog class="help" id="help">
-  <div class="help-inner">
-    <h2 class="help-title">Little tricks</h2>
+<dialog class="sheet" id="closeDay" aria-label="Close the day">
+  <div class="sheet-inner" id="closeDayInner"></div>
+</dialog>
+
+<dialog class="sheet" id="ledger" aria-label="The ledger">
+  <div class="sheet-inner" id="ledgerInner"></div>
+</dialog>
+
+<dialog class="sheet" id="help">
+  <div class="sheet-inner">
+    <h2 class="sheet-title">Little tricks</h2>
     <dl class="help-grid">
-      <dt><kbd>/</kbd></dt><dd>Jump to the composer</dd>
-      <dt><kbd>tomorrow</kbd> <kbd>fri</kbd> <kbd>in 3 days</kbd></dt><dd>Type a day inside a task and it becomes a due date</dd>
+      <dt><kbd>tomorrow</kbd> <kbd>fri</kbd> <kbd>in 3 days</kbd></dt><dd>Type a day inside a task and it becomes its date</dd>
+      <dt><kbd>tonight</kbd> <kbd>someday</kbd></dt><dd>Send it to this evening, or the someday drawer</dd>
+      <dt><kbd>every monday</kbd> <kbd>daily</kbd></dt><dd>Repeats. Ticking it writes the next one</dd>
+      <dt><kbd>~30m</kbd> <kbd>~2h</kbd></dt><dd>How long it takes. Today adds it up against the hours left</dd>
       <dt><kbd>!</kbd> <kbd>!!</kbd> <kbd>!!!</kbd></dt><dd>Priority, low to urgent</dd>
-      <dt><kbd>#tag</kbd></dt><dd>Tag a task</dd>
-      <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between tasks</dd>
-      <dt><kbd>space</kbd></dt><dd>Complete the focused task</dd>
-      <dt><kbd>e</kbd> or double‑click</dt><dd>Edit in place</dd>
+      <dt><kbd>#tag</kbd></dt><dd>Tag it. Click a tag to see only those</dd>
+      <dt><kbd>//</kbd></dt><dd>Everything after two slashes is a note</dd>
+      <dt><kbd>?</kbd>call</dt><dd>Start with a question mark to find instead of add</dd>
+      <dt><kbd>n</kbd></dt><dd>Start here: the page picks one thing and you focus on it</dd>
+      <dt><kbd>t</kbd> <kbd>v</kbd> <kbd>l</kbd> <kbd>s</kbd></dt><dd>Send the focused task to today, this evening, up next, someday</dd>
+      <dt><kbd>↑</kbd> <kbd>↓</kbd> <kbd>space</kbd> <kbd>e</kbd> <kbd>p</kbd> <kbd>⌫</kbd></dt><dd>Move, tick, edit, priority, delete</dd>
       <dt><kbd>alt</kbd> + <kbd>↑</kbd><kbd>↓</kbd></dt><dd>Reorder without the mouse</dd>
-      <dt><kbd>⌫</kbd></dt><dd>Delete, with a moment to undo</dd>
-      <dt><kbd>esc</kbd></dt><dd>Close anything</dd>
+      <dt><kbd>c</kbd> <kbd>j</kbd> <kbd>/</kbd></dt><dd>Close the day, open the ledger, jump to the composer</dd>
     </dl>
-    <p class="help-foot">Everything lives in this browser. Nothing leaves it.</p>
-    <button class="text-btn help-close" id="helpClose" type="button">Close</button>
+    <p class="help-foot">Ink fades on things you leave alone. After two weeks the page asks if you still want them. Everything lives in this browser. Nothing leaves it.</p>
+    <div class="help-data">
+      <button class="text-btn" id="exportBtn" type="button">Export</button>
+      <button class="text-btn" id="importBtn" type="button">Import</button>
+      <button class="text-btn" id="copyBtn" type="button">Copy as text</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <button class="text-btn help-close" id="helpClose" type="button">Close</button>
+    </div>
   </div>
 </dialog>
 
@@ -113,8 +202,13 @@
     </button>
     <div class="todo-body">
       <div class="todo-text" spellcheck="false"></div>
+      <div class="todo-note" hidden></div>
       <div class="todo-meta"></div>
+      <div class="ask" hidden></div>
     </div>
+    <button class="move" type="button" aria-label="Move">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+    </button>
     <button class="prio" type="button" aria-label="Cycle priority"><span></span></button>
     <button class="delete" type="button" aria-label="Delete">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
