@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inkling</title>
+<meta name="description" content="A todo list that likes you back. Paper, ink, and a sky that follows the hour.">
+<meta name="theme-color" content="#f4efe6">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f4efe6' stroke='%231b1a17' stroke-width='2'/%3E%3Cpath d='M9 16.5l5 5 9-11' fill='none' stroke='%23c8471f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="sky" aria-hidden="true"></div>
+<svg class="grain" aria-hidden="true"><filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .55 0"/></filter><rect width="100%" height="100%" filter="url(#grain)"/></svg>
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<main class="page">
+  <header class="masthead">
+    <p class="eyebrow">
+      <span id="greeting">Hello</span>
+      <span class="eyebrow-dot" aria-hidden="true"></span>
+      <time id="date"></time>
+    </p>
+    <h1 class="headline"><span id="headline" class="headline-text">To do</span></h1>
+    <p class="summary" id="summary" aria-live="polite"></p>
+  </header>
+
+  <form class="composer" id="composer" autocomplete="off">
+    <span class="composer-plus" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </span>
+    <label class="visually-hidden" for="input">Add a task</label>
+    <input id="input" class="composer-input" type="text" maxlength="200" spellcheck="true" placeholder="What needs doing?" enterkeyhint="done">
+    <kbd class="composer-kbd" aria-hidden="true">↵</kbd>
+    <div class="composer-hints" id="hints" aria-live="polite"></div>
+  </form>
+
+  <section class="list-section" aria-label="Tasks">
+    <ul class="list" id="active" role="list"></ul>
+    <div class="empty" id="empty" hidden>
+      <span class="empty-dot" aria-hidden="true"></span>
+      <p class="empty-text" id="emptyText"></p>
+    </div>
+  </section>
+
+  <section class="done-section" id="doneSection" hidden aria-label="Completed tasks">
+    <div class="done-bar">
+      <button class="done-toggle" id="doneToggle" type="button" aria-expanded="true">
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        <span>Done</span>
+        <span class="done-count" id="doneCount">0</span>
+      </button>
+      <button class="text-btn" id="clearDone" type="button">Clear completed</button>
+    </div>
+    <ul class="list list-done" id="done" role="list"></ul>
+  </section>
+
+  <footer class="foot">
+    <div class="week" id="week" title="Tasks finished, last seven days" aria-label="Tasks finished in the last seven days"></div>
+    <div class="foot-actions">
+      <button class="icon-btn" id="soundBtn" type="button" aria-label="Toggle sound" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L13 19V5L7.5 9.5H4z"/><path class="wave wave-1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="wave wave-2" d="M18.5 7a7 7 0 0 1 0 10"/></svg>
+      </button>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <mask id="moon-mask"><rect width="24" height="24" fill="#fff"/><circle class="moon-bite" cx="19" cy="7" r="6" fill="#000"/></mask>
+          <circle class="sun-core" cx="12" cy="12" r="5.5" mask="url(#moon-mask)"/>
+          <g class="rays"><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></g>
+        </svg>
+      </button>
+      <button class="icon-btn" id="helpBtn" type="button" aria-label="Keyboard shortcuts">?</button>
+    </div>
+  </footer>
+</main>
+
+<div class="toast" id="toast" role="status" hidden>
+  <span class="toast-text" id="toastText"></span>
+  <button class="toast-btn" id="toastUndo" type="button">Undo</button>
+  <span class="toast-bar" aria-hidden="true"></span>
+</div>
+
+<dialog class="help" id="help">
+  <div class="help-inner">
+    <h2 class="help-title">Little tricks</h2>
+    <dl class="help-grid">
+      <dt><kbd>/</kbd></dt><dd>Jump to the composer</dd>
+      <dt><kbd>tomorrow</kbd> <kbd>fri</kbd> <kbd>in 3 days</kbd></dt><dd>Type a day inside a task and it becomes a due date</dd>
+      <dt><kbd>!</kbd> <kbd>!!</kbd> <kbd>!!!</kbd></dt><dd>Priority, low to urgent</dd>
+      <dt><kbd>#tag</kbd></dt><dd>Tag a task</dd>
+      <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between tasks</dd>
+      <dt><kbd>space</kbd></dt><dd>Complete the focused task</dd>
+      <dt><kbd>e</kbd> or double‑click</dt><dd>Edit in place</dd>
+      <dt><kbd>alt</kbd> + <kbd>↑</kbd><kbd>↓</kbd></dt><dd>Reorder without the mouse</dd>
+      <dt><kbd>⌫</kbd></dt><dd>Delete, with a moment to undo</dd>
+      <dt><kbd>esc</kbd></dt><dd>Close anything</dd>
+    </dl>
+    <p class="help-foot">Everything lives in this browser. Nothing leaves it.</p>
+    <button class="text-btn help-close" id="helpClose" type="button">Close</button>
+  </div>
+</dialog>
+
+<template id="todoTemplate">
+  <li class="todo" tabindex="0" role="listitem">
+    <button class="check" type="button" aria-label="Mark complete">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="ring" cx="12" cy="12" r="10"/>
+        <path class="tick" d="M7 12.5l3.5 3.5L17.5 8.5"/>
+      </svg>
+      <span class="burst" aria-hidden="true"></span>
+    </button>
+    <div class="todo-body">
+      <div class="todo-text" spellcheck="false"></div>
+      <div class="todo-meta"></div>
+    </div>
+    <button class="prio" type="button" aria-label="Cycle priority"><span></span></button>
+    <button class="delete" type="button" aria-label="Delete">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <span class="grip" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  </li>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
