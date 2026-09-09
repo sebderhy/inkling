@@ -6,7 +6,7 @@
 <title>Inkling</title>
 <meta name="description" content="A todo list that likes you back. Paper, ink, and a sky that follows the hour.">
 <meta name="theme-color" content="#f4efe6">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f4efe6' stroke='%231b1a17' stroke-width='2'/%3E%3Cpath d='M9 16.5l5 5 9-11' fill='none' stroke='%23c8471f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -103,7 +103,10 @@
   </section>
 
   <footer class="foot">
-    <button class="week" id="week" type="button" title="The ledger: what you finished each day (j)" aria-label="Open the ledger"></button>
+    <div class="foot-left">
+      <button class="week" id="week" type="button" title="The ledger: what you finished each day (j)" aria-label="Open the ledger"></button>
+      <button class="sync-dot" id="syncDot" type="button" hidden aria-label="Sync status"></button>
+    </div>
     <div class="foot-actions">
       <button class="text-btn close-day-btn" id="closeDayBtn" type="button" hidden>Close the day</button>
       <button class="icon-btn" id="soundBtn" type="button" aria-label="Toggle sound" aria-pressed="true">

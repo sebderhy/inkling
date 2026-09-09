@@ -638,6 +638,17 @@ body {
   transition: height .6s var(--ease-spring), opacity .4s, background .3s;
 }
 .week i.today { background: var(--accent); opacity: 1; }
+.foot-left { display: flex; align-items: center; gap: 10px; }
+.sync-dot {
+  width: 22px; height: 22px; border: 0; background: none; padding: 0; cursor: pointer;
+  display: grid; place-items: center; border-radius: 50%;
+}
+.sync-dot[hidden] { display: none; }
+.sync-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--moss); transition: background .3s; }
+.sync-dot[data-state="syncing"]::before { background: var(--amber); animation: breathe 1.2s ease-in-out infinite; }
+.sync-dot[data-state="offline"]::before { background: var(--ink-3); }
+.sync-dot[data-state="locked"]::before { background: var(--accent); }
+.sync-dot:hover { background: var(--paper-2); }
 .foot-actions { display: flex; gap: 4px; align-items: center; }
 .close-day-btn { color: var(--ink); font-family: var(--serif); font-style: italic; font-size: 15px; margin-right: 6px; animation: hint-in .5s var(--ease-spring) both; }
 .close-day-btn[hidden] { display: none; }

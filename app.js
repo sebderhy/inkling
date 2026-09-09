@@ -18,10 +18,12 @@
 
   /* ── state ──────────────────────────────────── */
   function blank() {
-    return { todos: [], history: {}, focus: {}, journal: {}, sound: true, theme: 'auto', doneOpen: true, somedayOpen: false, seeded: false, lastDay: null };
+    return { todos: [], deleted: [], history: {}, focus: {}, journal: {}, sound: true, theme: 'auto', doneOpen: true, somedayOpen: false, seeded: false, lastDay: null };
   }
   function migrate(t) {
-    return { note: '', when: 'next', est: null, repeat: null, carried: 0, tags: [], prio: 0, due: null, touched: t.created || Date.now(), ...t };
+    const base = { note: '', when: 'next', est: null, repeat: null, carried: 0, tags: [], prio: 0, due: null, touched: t.created || Date.now(), ...t };
+    base.updated = base.updated || base.touched;
+    return base;
   }
   function load() {
     try {
@@ -35,12 +37,104 @@
     return blank();
   }
   const state = load();
-  function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  /* every change lands in localStorage; the user's own changes also go to the sync server, when there is one */
+  function save(fromSync = false) {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    if (!fromSync) sync.changed();
+  }
+  function forget(id) { state.deleted = (state.deleted || []).filter(d => d.id !== id); state.deleted.push({ id, at: Date.now() }); }
+  function unforget(id) { state.deleted = (state.deleted || []).filter(d => d.id !== id); }
+
+  /* ── sync: the same page on every device ────── */
+  const SYNC_KEYS = ['todos', 'deleted', 'history', 'focus', 'journal'];
+  const syncable = s => Object.fromEntries(SYNC_KEYS.map(k => [k, s[k] || (k === 'todos' || k === 'deleted' ? [] : {})]));
+  const stampOf = t => Math.max(t.updated || 0, t.touched || 0, t.completed || 0, t.created || 0);
+
+  /* fold the server's copy into ours: newest version of each task wins, deletions travel as tombstones */
+  function mergeInto(local, remote) {
+    const before = JSON.stringify(syncable(local));
+    if (remote.todos.length && local.todos.length && local.todos.every(t => t.seed)) local.todos = []; // a fresh device keeps the real list, not the demo
+    const tomb = new Map();
+    for (const d of [...(local.deleted || []), ...(remote.deleted || [])]) if (!tomb.has(d.id) || tomb.get(d.id) < d.at) tomb.set(d.id, d.at);
+    const byId = new Map();
+    for (const t of [...remote.todos.map(migrate), ...local.todos]) { // local last, so ties keep what is on screen
+      const cur = byId.get(t.id);
+      if (!cur || stampOf(t) > stampOf(cur)) byId.set(t.id, t);
+    }
+    const order = local.todos.map(t => t.id);
+    remote.todos.forEach((t, i) => {
+      if (order.includes(t.id)) return;
+      let at = 0;
+      for (let j = i - 1; j >= 0; j--) { const k = order.indexOf(remote.todos[j].id); if (k >= 0) { at = k + 1; break; } }
+      order.splice(at, 0, t.id);
+    });
+    local.todos = order.map(id => byId.get(id)).filter(t => t && !(tomb.has(t.id) && tomb.get(t.id) > stampOf(t)));
+    local.deleted = [...tomb].filter(([, at]) => Date.now() - at < 30 * DAY).map(([id, at]) => ({ id, at }));
+    for (const k of ['history', 'focus']) { local[k] = local[k] || {}; for (const [d, n] of Object.entries(remote[k] || {})) local[k][d] = Math.max(local[k][d] || 0, n); }
+    local.journal = local.journal || {};
+    for (const [d, j] of Object.entries(remote.journal || {})) if (!local.journal[d] || (j.closed || 0) > (local.journal[d].closed || 0)) local.journal[d] = j;
+    return JSON.stringify(syncable(local)) !== before;
+  }
+
+  const sync = (() => {
+    let base = null, rev = null, dirty = false, pushTimer = null, pulling = false;
+    const setStatus = (s, title) => { el.syncDot.dataset.state = s; el.syncDot.title = title || ''; el.syncDot.hidden = s === 'off'; };
+    const req = (method, body) => fetch(base + '/sync', { method, credentials: 'include', cache: 'no-store', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body && JSON.stringify(body) });
+    const offline = () => setStatus('offline', 'Offline. Changes stay here and sync when you are back.');
+    const locked = () => setStatus('locked', 'Sync is locked out. Log in to ShellTeam on this device, then reload.');
+    async function init() {
+      let cfg = null;
+      try { const r = await fetch('sync.json', { cache: 'no-store' }); if (r.ok) cfg = await r.json(); } catch (_) { /* no server, no sync */ }
+      if (!cfg || cfg.url == null) return setStatus('off');
+      base = cfg.url.replace(/\/$/, '');
+      setStatus('syncing', 'Syncing');
+      await pull();
+      setInterval(pull, 20000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pull(); });
+      addEventListener('online', pull);
+      el.syncDot.addEventListener('click', pull);
+    }
+    function adopt(doc) {
+      rev = doc.rev;
+      if (!doc.state) { dirty = true; return; }
+      if (mergeInto(state, doc.state)) { save(true); staleId = chooseStale(); render(); }
+    }
+    async function pull() {
+      if (base == null || pulling) return;
+      pulling = true;
+      try {
+        const r = await req('GET');
+        if (r.status === 401 || r.status === 403) return locked();
+        if (!r.ok) throw new Error(r.status);
+        const doc = await r.json();
+        if (doc.rev !== rev) adopt(doc);
+        if (dirty) await push(); else setStatus('ok', 'Synced');
+      } catch (_) { offline(); }
+      finally { pulling = false; }
+    }
+    async function push(tries = 0) {
+      if (base == null) return;
+      const r = await req('PUT', { baseRev: rev ?? 0, state: syncable(state) });
+      if (r.status === 409 && tries < 5) { adopt(await r.json()); return push(tries + 1); }
+      if (r.status === 401 || r.status === 403) return locked();
+      if (!r.ok) throw new Error(r.status);
+      rev = (await r.json()).rev; dirty = false; setStatus('ok', 'Synced');
+    }
+    function changed() {
+      dirty = true;
+      if (base == null) return;
+      setStatus('syncing', 'Saving');
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(() => push().catch(offline), 700);
+    }
+    return { init, changed, pull };
+  })();
+  window.inkling = { pull: sync.pull }; // a handle for tests and the curious
 
   /* first visit: a gentle demo so the page isn't a blank stare */
   if (!state.seeded && state.todos.length === 0) {
     const t = Date.now(), base = startOfDay();
-    const mk = (text, extra = {}) => migrate({ id: uid(), text, done: false, created: t - (state.todos.length + 1), ...extra });
+    const mk = (text, extra = {}) => migrate({ id: uid(), text, done: false, seed: true, created: t - (state.todos.length + 1), ...extra });
     state.todos = [
       mk('Type a task above and press enter', { when: 'today' }),
       mk('Tick this one, listen closely', { when: 'today', est: 5 }),
@@ -52,7 +146,7 @@
       mk('Learn to whistle properly', { when: 'someday' }),
     ];
     state.seeded = true;
-    save();
+    save(true);
   }
 
   /* ── dom ────────────────────────────────────── */
@@ -68,7 +162,7 @@
     somedaySection: $('#somedaySection'), someday: $('#someday'), somedayToggle: $('#somedayToggle'), somedayCount: $('#somedayCount'),
     empty: $('#empty'), emptyText: $('#emptyText'),
     doneSection: $('#doneSection'), done: $('#done'), doneToggle: $('#doneToggle'), doneCount: $('#doneCount'), clearDone: $('#clearDone'),
-    week: $('#week'), closeDayBtn: $('#closeDayBtn'), soundBtn: $('#soundBtn'), themeBtn: $('#themeBtn'), helpBtn: $('#helpBtn'),
+    week: $('#week'), syncDot: $('#syncDot'), closeDayBtn: $('#closeDayBtn'), soundBtn: $('#soundBtn'), themeBtn: $('#themeBtn'), helpBtn: $('#helpBtn'),
     help: $('#help'), helpClose: $('#helpClose'), exportBtn: $('#exportBtn'), importBtn: $('#importBtn'), importFile: $('#importFile'), copyBtn: $('#copyBtn'),
     closeDay: $('#closeDay'), closeDayInner: $('#closeDayInner'), ledger: $('#ledger'), ledgerInner: $('#ledgerInner'),
     focus: $('#focus'), focusText: $('#focusText'), focusNote: $('#focusNote'), focusTime: $('#focusTime'), focusHint: $('#focusHint'),
@@ -212,7 +306,8 @@
   }
   const isToday = t => { const s = sectionOf(t); return s === 'today' || s === 'evening'; };
   const ageDays = t => (Date.now() - (t.touched || t.created)) / DAY;
-  function touch(t) { t.touched = Date.now(); }
+  function touch(t) { t.touched = t.updated = Date.now(); delete t.seed; }
+  function stamp(t) { t.updated = Date.now(); delete t.seed; }
 
   /* what to do now: a Taskwarrior-style score */
   function urgency(t) {
@@ -645,7 +740,7 @@
     const li = nodes.get(id);
     const key = todayKey();
     if (!todo.done) {
-      todo.done = true; todo.completed = Date.now();
+      todo.done = true; todo.completed = Date.now(); stamp(todo);
       state.history[key] = (state.history[key] || 0) + 1;
       const burst = $('.burst', li);
       burst.classList.remove('go'); void burst.offsetWidth; burst.classList.add('go');
@@ -653,7 +748,7 @@
       li.classList.add('is-done');
       let next = null;
       if (todo.repeat) {
-        next = migrate({ ...todo, id: uid(), done: false, completed: null, created: Date.now(), touched: Date.now(), carried: 0, when: 'next', due: nextDue(todo.repeat, todo.due) });
+        next = migrate({ ...todo, id: uid(), done: false, completed: null, created: Date.now(), touched: Date.now(), updated: Date.now(), carried: 0, when: 'next', due: nextDue(todo.repeat, todo.due) });
         state.todos.splice(state.todos.indexOf(todo) + 1, 0, next);
       }
       save();
@@ -675,6 +770,7 @@
     const idx = state.todos.findIndex(t => t.id === id);
     if (idx < 0) return;
     const [todo] = state.todos.splice(idx, 1);
+    forget(id);
     const li = nodes.get(id);
     nodes.delete(id);
     if (focusing?.id === id) stopFocus(false);
@@ -688,6 +784,7 @@
     render();
     toast(`Deleted <em>${escape(todo.text)}</em>`, () => {
       state.todos.splice(Math.min(idx, state.todos.length), 0, todo);
+      unforget(todo.id); stamp(todo);
       save(); render();
       const back = nodes.get(todo.id);
       if (back) { back.classList.add('entering'); back.addEventListener('animationend', () => back.classList.remove('entering'), { once: true }); }
@@ -783,7 +880,7 @@
     sound.remove();
     setTimeout(() => {
       state.todos = state.todos.filter(t => !t.done);
-      done.forEach(t => nodes.delete(t.id));
+      done.forEach(t => { nodes.delete(t.id); forget(t.id); });
       lis.forEach(li => li.remove());
       save(); render();
     }, reduceMotion ? 0 : 450 + lis.length * 40);
@@ -890,7 +987,7 @@
     const before = JSON.stringify(state);
     const known = new Set(state.todos.map(t => t.id));
     let added = 0;
-    for (const t of raw.todos.map(migrate)) if (!known.has(t.id)) { state.todos.push(t); added++; }
+    for (const t of raw.todos.map(migrate)) if (!known.has(t.id)) { stamp(t); state.todos.push(t); added++; }
     for (const k of ['history', 'focus', 'journal']) Object.assign(state[k], raw[k] || {});
     save(); render(); el.help.close(); el.importFile.value = '';
     toast(`Imported <em>${added}</em> ${added === 1 ? 'task' : 'tasks'}`, () => { Object.assign(state, JSON.parse(before)); save(); render(); });
@@ -996,7 +1093,7 @@
         else if (d === 'go') gone.push(t);
         // 'tomorrow' is what the night does on its own: the task carries over
       }
-      for (const t of gone) state.todos.splice(state.todos.indexOf(t), 1);
+      for (const t of gone) { state.todos.splice(state.todos.indexOf(t), 1); forget(t.id); }
       for (const id of lined) { const t = state.todos.find(x => x.id === id); if (t) { t.due = tomorrow; t.when = 'next'; touch(t); } }
       state.journal[key] = { closed: Date.now(), note, done: doneCount, lined: lined.size };
       save();
@@ -1005,7 +1102,7 @@
       gone.forEach(t => nodes.get(t.id)?.remove());
       gone.forEach(t => nodes.delete(t.id));
       render();
-      if (gone.length) toast(`Let go of ${gone.length === 1 ? `<em>${escape(gone[0].text)}</em>` : `${gone.length} things`}`, () => { state.todos.push(...gone); save(); render(); });
+      if (gone.length) toast(`Let go of ${gone.length === 1 ? `<em>${escape(gone[0].text)}</em>` : `${gone.length} things`}`, () => { gone.forEach(t => { unforget(t.id); stamp(t); }); state.todos.push(...gone); save(); render(); });
     };
     draw();
     el.closeDay.showModal();
@@ -1292,5 +1389,6 @@
     if (state.doneOpen) el.done.style.maxHeight = el.done.scrollHeight + 'px';
     if (state.somedayOpen) el.someday.style.maxHeight = el.someday.scrollHeight + 'px';
   });
+  sync.init();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

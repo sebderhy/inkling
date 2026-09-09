@@ -2,7 +2,7 @@
 
 A todo list that likes you back.
 
-Paper, ink, and a sky that follows the hour. No framework, no build step, no account. Everything lives in your browser, and the page works with no network at all.
+Paper, ink, and a sky that follows the hour. No framework, no build step, no account. Everything lives in your browser, the page works with no network at all, and with the tiny included server the same page follows you from laptop to phone.
 
 **Live:** https://sebderhy.github.io/inkling/
 
@@ -64,11 +64,23 @@ Open `index.html`. That's it. Or serve the folder with anything:
 python3 -m http.server 3000
 ```
 
+## Every device, one page
+
+`server.js` is a dependency-free Node server that serves the app and keeps one JSON document, so your phone and your laptop see the same list.
+
+```sh
+PORT=3000 node server.js
+```
+
+The page finds the server on its own (it asks for `sync.json` on the same origin) and shows a small dot in the footer: green when synced, amber while saving, grey when offline, red when the server wants you to log in. Offline edits stay on the device and sync when you are back. Two devices editing at once merge by task, newest change wins, and deletions travel as tombstones so a task you removed on the phone does not come back from the laptop.
+
+Options, all environment variables: `DATA` for where the document lives (default `~/.inkling/state.json`), `ORIGINS` for other origins allowed to call the server with cookies, `TOKEN` to require a bearer token when there is no authenticating proxy in front.
+
 ## Made of
 
 - [Fraunces](https://fonts.google.com/specimen/Fraunces) for the headlines, [Instrument Sans](https://fonts.google.com/specimen/Instrument+Sans) for everything else
 - Vanilla JS, CSS, and the Web Audio and Web Animations APIs
-- `localStorage` for persistence, a small service worker for offline
+- `localStorage` for persistence, a small service worker for offline, an optional 100-line Node server for sync
 
 ## Borrowed from the best
 

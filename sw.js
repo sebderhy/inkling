@@ -12,6 +12,7 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   const own = url.origin === location.origin;
+  if (own && url.pathname.startsWith('/sync')) return; // live data is never served from cache
   // own files: network first so updates land, cache as the fallback. fonts: cache first.
   e.respondWith(own
     ? fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; }).catch(() => caches.match(e.request))
