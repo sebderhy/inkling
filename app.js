@@ -400,7 +400,6 @@
     }
   }
 
-  let pendingUndo = null;
   function remove(id) {
     const idx = state.todos.findIndex(t => t.id === id);
     if (idx < 0) return;
@@ -415,11 +414,8 @@
       li.addEventListener('animationend', () => { li.remove(); render(); }, { once: true });
     }
     render();
-    pendingUndo = { todo, idx };
     toast(`Deleted <em>${escape(todo.text)}</em>`, () => {
-      if (!pendingUndo) return;
-      state.todos.splice(Math.min(pendingUndo.idx, state.todos.length), 0, pendingUndo.todo);
-      pendingUndo = null;
+      state.todos.splice(Math.min(idx, state.todos.length), 0, todo);
       save(); render();
       const back = nodes.get(todo.id);
       if (back) { back.classList.add('entering'); back.addEventListener('animationend', () => back.classList.remove('entering'), { once: true }); }
@@ -515,7 +511,7 @@
     if (el.toast.hidden) return;
     el.toast.classList.add('out');
     el.toast.addEventListener('animationend', () => { el.toast.hidden = true; el.toast.classList.remove('out'); }, { once: true });
-    pendingUndo = null; toastAction = null;
+    toastAction = null;
   }
   el.toastUndo.addEventListener('click', () => { const fn = toastAction; hideToast(); fn && fn(); });
 
